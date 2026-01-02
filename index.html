@@ -8,7 +8,7 @@
     <style>
         :root {
             --primary: #0f766e; /* Brand Green */
-            --accent: #f59e0b; /* Amber for NEXT */
+            --accent: #10b981; /* Bright Green for Pulse */
             --bg: #f3f4f6;
             --card: #ffffff;
             --text: #1f2937;
@@ -29,7 +29,7 @@
             background: var(--card); padding: 16px; margin-bottom: 12px; border-radius: 12px; 
             display: flex; justify-content: space-between; align-items: center; 
             box-shadow: 0 1px 3px rgba(0,0,0,0.05); border-left: 5px solid transparent;
-            transition: transform 0.2s;
+            transition: all 0.3s ease;
         }
         .prayer-info { display: flex; flex-direction: column; }
         .prayer-name { font-weight: 800; font-size: 1.2em; color: #374151; }
@@ -38,20 +38,27 @@
         .times { text-align: right; }
         .adhan-time { font-size: 1.4em; font-weight: bold; color: var(--primary); }
         
-        /* NEXT PRAYER HIGHLIGHT */
+        /* --- NEW HIGHLIGHTER STYLES --- */
+        @keyframes pulse-green {
+            0% { box-shadow: 0 0 0 0 rgba(16, 185, 129, 0.7); }
+            70% { box-shadow: 0 0 0 10px rgba(16, 185, 129, 0); }
+            100% { box-shadow: 0 0 0 0 rgba(16, 185, 129, 0); }
+        }
+
         .prayer-card.next-up {
             border-left: 5px solid var(--accent);
-            background: #fffbeb; /* Light yellow bg */
+            background: #ecfdf5; /* Very light green */
+            animation: pulse-green 2s infinite; /* The Heartbeat Effect */
             transform: scale(1.02);
-            box-shadow: 0 4px 12px rgba(245, 158, 11, 0.2);
         }
-        .prayer-card.next-up .prayer-name { color: var(--accent); }
+        .prayer-card.next-up .prayer-name { color: var(--primary); }
+        
         .next-badge { 
             display: none; background: var(--accent); color: white; font-size: 0.7em; 
             padding: 2px 8px; border-radius: 10px; font-weight: bold; margin-bottom: 5px; 
-            text-transform: uppercase; letter-spacing: 1px;
+            text-transform: uppercase; letter-spacing: 1px; width: fit-content;
         }
-        .prayer-card.next-up .next-badge { display: inline-block; }
+        .prayer-card.next-up .next-badge { display: block; }
 
         /* Jummah & Hadith */
         .info-section { background: var(--card); padding: 20px; border-radius: 12px; margin-top: 30px; border: 1px solid #e5e7eb; }
@@ -89,19 +96,15 @@
 </div>
 
 <script>
-    // --- 1. SETUP & INITIALIZATION ---
+    // --- 1. SETUP ---
     const datePicker = document.getElementById('date-picker');
-    
-    // Set min and max dates for the picker (January 2026)
     datePicker.min = "2026-01-01";
     datePicker.max = "2026-01-31";
 
-    // Set to Today (or default to Jan 1 if outside range)
     const today = new Date();
-    // Format today as YYYY-MM-DD for the input
     const formattedToday = today.toISOString().split('T')[0];
     
-    // Default logic: If today is in Jan 2026, show today. If not, show Jan 1.
+    // Default to Today if in range, else Jan 1
     if(formattedToday >= datePicker.min && formattedToday <= datePicker.max) {
         datePicker.value = formattedToday;
     } else {
@@ -110,7 +113,6 @@
 
     // --- 2. LOGIC TO FIND NEXT PRAYER ---
     function isNext(prayerTimeStr, now) {
-        // Convert "5:24p" to minutes since midnight for comparison
         if (!prayerTimeStr) return false;
         
         let time = prayerTimeStr.toLowerCase();
@@ -125,17 +127,15 @@
         const prayerMinutes = (hour * 60) + min;
         const currentMinutes = (now.getHours() * 60) + now.getMinutes();
 
-        // If prayer is in the future, it's a candidate
+        // If prayer is in the future relative to NOW, it's a candidate
         return prayerMinutes > currentMinutes;
     }
 
     // --- 3. MAIN RENDER FUNCTION ---
     function loadDay(dateString) {
-        // Extract day number (e.g., "2026-01-05" -> 5)
-        const dateObj = new Date(dateString + 'T12:00:00'); // T12 to avoid timezone shifts
+        const dateObj = new Date(dateString + 'T12:00:00'); 
         const dayNumber = dateObj.getDate();
         
-        // Find data
         const dayData = prayerData.schedule.find(d => d.day === dayNumber);
         const container = document.getElementById('prayer-list');
         container.innerHTML = "";
@@ -145,7 +145,6 @@
             return;
         }
 
-        // Define prayers structure
         const prayers = [
             { key: 'fajr', label: 'Fajr', iqamah: prayerData.iqamah.fajr },
             { key: 'dhuhr', label: 'Dhuhr', iqamah: prayerData.iqamah.dhuhr },
@@ -154,22 +153,20 @@
             { key: 'isha', label: 'Isha', iqamah: prayerData.iqamah.isha(dayNumber) },
         ];
 
-        // Find which prayer is "Next"
         const now = new Date();
         let nextFound = false;
 
         prayers.forEach(p => {
-            // Check if this prayer is the next one up
-            // Only check if selected date matches Today's actual date
+            // Updated Logic: We removed the "isToday" check.
+            // It now highlights the next prayer relative to the CURRENT TIME
+            // regardless of which day you are viewing. Great for testing!
             let isNextUp = false;
-            const isToday = (dateString === formattedToday);
             
-            if (isToday && !nextFound && isNext(dayData[p.key], now)) {
+            if (!nextFound && isNext(dayData[p.key], now)) {
                 isNextUp = true;
-                nextFound = true; // Stop highlighting others
+                nextFound = true; 
             }
 
-            // Build HTML
             const highlightClass = isNextUp ? 'next-up' : '';
             
             const html = `
@@ -189,7 +186,6 @@
     }
 
     // --- 4. INITIAL LOAD ---
-    // Load Jummah/Hadith
     const jummahContainer = document.getElementById('jummah-container');
     prayerData.jummah.forEach(j => {
         jummahContainer.innerHTML += `
@@ -202,7 +198,6 @@
     document.getElementById('hadith-text').innerText = prayerData.hadith.text;
     document.getElementById('hadith-ref').innerText = prayerData.hadith.ref;
 
-    // Load Schedule
     loadDay(datePicker.value);
 
 </script>
