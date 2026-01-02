@@ -1,0 +1,210 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Kalamazoo Prayer Schedule</title>
+    <script src="data.js"></script>
+    <style>
+        :root {
+            --primary: #0f766e; /* Brand Green */
+            --accent: #f59e0b; /* Amber for NEXT */
+            --bg: #f3f4f6;
+            --card: #ffffff;
+            --text: #1f2937;
+        }
+        body { font-family: -apple-system, system-ui, sans-serif; background: var(--bg); color: var(--text); margin: 0; padding: 15px; }
+        .container { max-width: 500px; margin: 0 auto; }
+        
+        /* Calendar Control */
+        .controls { text-align: center; margin-bottom: 20px; background: white; padding: 15px; border-radius: 12px; box-shadow: 0 2px 4px rgba(0,0,0,0.05); }
+        .controls label { font-size: 0.9em; color: #666; display: block; margin-bottom: 5px; }
+        input[type="date"] {
+            font-size: 1.2rem; padding: 8px 15px; border-radius: 8px; border: 2px solid var(--primary);
+            color: var(--primary); font-weight: bold; font-family: inherit; outline: none;
+        }
+
+        /* Prayer Cards */
+        .prayer-card { 
+            background: var(--card); padding: 16px; margin-bottom: 12px; border-radius: 12px; 
+            display: flex; justify-content: space-between; align-items: center; 
+            box-shadow: 0 1px 3px rgba(0,0,0,0.05); border-left: 5px solid transparent;
+            transition: transform 0.2s;
+        }
+        .prayer-info { display: flex; flex-direction: column; }
+        .prayer-name { font-weight: 800; font-size: 1.2em; color: #374151; }
+        .iqamah-badge { font-size: 0.75em; background: #eee; padding: 2px 6px; border-radius: 4px; color: #666; margin-top: 4px; width: fit-content; }
+        
+        .times { text-align: right; }
+        .adhan-time { font-size: 1.4em; font-weight: bold; color: var(--primary); }
+        
+        /* NEXT PRAYER HIGHLIGHT */
+        .prayer-card.next-up {
+            border-left: 5px solid var(--accent);
+            background: #fffbeb; /* Light yellow bg */
+            transform: scale(1.02);
+            box-shadow: 0 4px 12px rgba(245, 158, 11, 0.2);
+        }
+        .prayer-card.next-up .prayer-name { color: var(--accent); }
+        .next-badge { 
+            display: none; background: var(--accent); color: white; font-size: 0.7em; 
+            padding: 2px 8px; border-radius: 10px; font-weight: bold; margin-bottom: 5px; 
+            text-transform: uppercase; letter-spacing: 1px;
+        }
+        .prayer-card.next-up .next-badge { display: inline-block; }
+
+        /* Jummah & Hadith */
+        .info-section { background: var(--card); padding: 20px; border-radius: 12px; margin-top: 30px; border: 1px solid #e5e7eb; }
+        .section-title { color: var(--primary); font-weight: 800; margin-bottom: 15px; border-bottom: 2px solid #eee; padding-bottom: 10px; }
+        .jummah-row { display: flex; justify-content: space-between; margin-bottom: 12px; font-size: 0.95em; border-bottom: 1px dashed #eee; padding-bottom: 8px; }
+        .jummah-row:last-child { border-bottom: none; }
+        .hadith-text { font-style: italic; line-height: 1.6; color: #4b5563; }
+        .hadith-ref { display: block; text-align: right; font-size: 0.8em; color: #9ca3af; margin-top: 10px; }
+    </style>
+</head>
+<body>
+
+<div class="container">
+    
+    <div class="controls">
+        <label>Select Date</label>
+        <input type="date" id="date-picker" onchange="loadDay(this.value)">
+    </div>
+
+    <div id="prayer-list"></div>
+
+    <div class="info-section">
+        <div class="section-title">🕌 Jummah Schedule</div>
+        <div id="jummah-container"></div>
+        <div style="margin-top:10px; font-size:0.8em; color:crimson; font-weight:bold;">
+            ⚠️ Note: Asr Iqamah on Friday is after 2nd Jummah
+        </div>
+    </div>
+
+    <div class="info-section">
+        <div class="section-title">📖 Hadith of the Month</div>
+        <div class="hadith-text">"<span id="hadith-text"></span>"</div>
+        <span class="hadith-ref" id="hadith-ref"></span>
+    </div>
+</div>
+
+<script>
+    // --- 1. SETUP & INITIALIZATION ---
+    const datePicker = document.getElementById('date-picker');
+    
+    // Set min and max dates for the picker (January 2026)
+    datePicker.min = "2026-01-01";
+    datePicker.max = "2026-01-31";
+
+    // Set to Today (or default to Jan 1 if outside range)
+    const today = new Date();
+    // Format today as YYYY-MM-DD for the input
+    const formattedToday = today.toISOString().split('T')[0];
+    
+    // Default logic: If today is in Jan 2026, show today. If not, show Jan 1.
+    if(formattedToday >= datePicker.min && formattedToday <= datePicker.max) {
+        datePicker.value = formattedToday;
+    } else {
+        datePicker.value = "2026-01-01";
+    }
+
+    // --- 2. LOGIC TO FIND NEXT PRAYER ---
+    function isNext(prayerTimeStr, now) {
+        // Convert "5:24p" to minutes since midnight for comparison
+        if (!prayerTimeStr) return false;
+        
+        let time = prayerTimeStr.toLowerCase();
+        let isPM = time.includes('p');
+        let parts = time.replace(/[ap]/g, '').split(':');
+        let hour = parseInt(parts[0]);
+        let min = parseInt(parts[1]);
+
+        if (isPM && hour !== 12) hour += 12;
+        if (!isPM && hour === 12) hour = 0;
+
+        const prayerMinutes = (hour * 60) + min;
+        const currentMinutes = (now.getHours() * 60) + now.getMinutes();
+
+        // If prayer is in the future, it's a candidate
+        return prayerMinutes > currentMinutes;
+    }
+
+    // --- 3. MAIN RENDER FUNCTION ---
+    function loadDay(dateString) {
+        // Extract day number (e.g., "2026-01-05" -> 5)
+        const dateObj = new Date(dateString + 'T12:00:00'); // T12 to avoid timezone shifts
+        const dayNumber = dateObj.getDate();
+        
+        // Find data
+        const dayData = prayerData.schedule.find(d => d.day === dayNumber);
+        const container = document.getElementById('prayer-list');
+        container.innerHTML = "";
+
+        if (!dayData) {
+            container.innerHTML = "<div style='text-align:center'>No data for this date.</div>";
+            return;
+        }
+
+        // Define prayers structure
+        const prayers = [
+            { key: 'fajr', label: 'Fajr', iqamah: prayerData.iqamah.fajr },
+            { key: 'dhuhr', label: 'Dhuhr', iqamah: prayerData.iqamah.dhuhr },
+            { key: 'asr', label: 'Asr', iqamah: prayerData.iqamah.asr(dayNumber) },
+            { key: 'maghrib', label: 'Maghrib', iqamah: prayerData.iqamah.maghrib(dayNumber) },
+            { key: 'isha', label: 'Isha', iqamah: prayerData.iqamah.isha(dayNumber) },
+        ];
+
+        // Find which prayer is "Next"
+        const now = new Date();
+        let nextFound = false;
+
+        prayers.forEach(p => {
+            // Check if this prayer is the next one up
+            // Only check if selected date matches Today's actual date
+            let isNextUp = false;
+            const isToday = (dateString === formattedToday);
+            
+            if (isToday && !nextFound && isNext(dayData[p.key], now)) {
+                isNextUp = true;
+                nextFound = true; // Stop highlighting others
+            }
+
+            // Build HTML
+            const highlightClass = isNextUp ? 'next-up' : '';
+            
+            const html = `
+                <div class="prayer-card ${highlightClass}">
+                    <div class="prayer-info">
+                        <span class="next-badge">NEXT PRAYER</span>
+                        <span class="prayer-name">${p.label}</span>
+                        <div class="iqamah-badge">Iqamah: ${p.iqamah}</div>
+                    </div>
+                    <div class="times">
+                        <div class="adhan-time">${dayData[p.key]}</div>
+                    </div>
+                </div>
+            `;
+            container.innerHTML += html;
+        });
+    }
+
+    // --- 4. INITIAL LOAD ---
+    // Load Jummah/Hadith
+    const jummahContainer = document.getElementById('jummah-container');
+    prayerData.jummah.forEach(j => {
+        jummahContainer.innerHTML += `
+            <div class="jummah-row">
+                <strong>${j.loc}</strong>
+                <span>${j.time}</span>
+            </div>
+        `;
+    });
+    document.getElementById('hadith-text').innerText = prayerData.hadith.text;
+    document.getElementById('hadith-ref').innerText = prayerData.hadith.ref;
+
+    // Load Schedule
+    loadDay(datePicker.value);
+
+</script>
+</body>
+</html>
